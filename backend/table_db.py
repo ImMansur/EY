@@ -17,6 +17,7 @@ def get_all_tickets_df(sheet_name="Tickets"):
     Properly handles Excel serial dates → datetime conversion only when needed.
     """
     if not os.path.exists(FILE):
+        # Check parent dir if not found (optional, but keep it simple for now as it's in the same folder)
         raise FileNotFoundError(f"{FILE} not found. Please place the file in the working directory.")
 
     try:

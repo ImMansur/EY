@@ -1,5 +1,5 @@
 # app.py
-from flask import Flask, render_template, request, session, redirect, url_for, flash
+from flask import Flask, render_template, request, session, redirect, url_for, flash, render_template_string
 from table_db import get_all_tickets_df, get_invoices_df
 import matplotlib
 matplotlib.use('Agg')
@@ -12,7 +12,10 @@ import pandas as pd
 import os
 import json
 
-app = Flask(__name__)
+app = Flask(__name__, 
+            template_folder='../frontend/templates', 
+            static_folder='../frontend/static')
+
 app.secret_key = "ey_demo_secret_key_2025_super_secret"
 
 # Users file
