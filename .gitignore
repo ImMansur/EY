@@ -128,3 +128,6 @@ Desktop.ini
 notes.md
 scratch.py
 playground/
+
+logs/
+backend\logs

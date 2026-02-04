@@ -273,17 +273,83 @@ def get_kpi_metrics(team_name: str = None) -> dict:
         metrics["Avg Resolution Time (Hours)"] = 0
 
     return metrics
+
+def intelligent_assign_tickets(team_name: str = None) -> dict:
+    """
+    Automatically assigns unassigned Open tickets to employees to balance workload.
+    1. Finds all Open tickets that are unassigned (User Name is empty/None).
+    2. Gets list of employees for the team.
+    3. Checks current 'Open' ticket count for each employee.
+    4. Assigns unassigned tickets to employees with the least workload.
+    """
     try:
-        df_t = get_all_tickets_df()
-        df_i = get_invoices_df()
-        print(get_invoices_df())
-        print("Tickets loaded:", df_t.shape)
-        print("Invoices loaded:", df_i.shape)
+        from datetime import datetime
+        df = get_all_tickets_df()
+        df = ensure_required_columns(df)
         
-        print("\nCreation Date sample (should be datetime):")
-        print(df_t["Creation Date"].head(10))
+        # 1. Load users to find available employees
+        users_file = os.path.join(os.path.dirname(__file__), "user.json")
+        with open(users_file, "r", encoding="utf-8") as f:
+            all_users = json.load(f)
         
-        print("\nDue Date sample (should be datetime):")
-        print(df_i["Due Date"].head(10))
+        # Filter for employees in the specific team
+        employees = []
+        for u in all_users:
+            if str(u.get("role")).lower() == "employee":
+                u_team = u.get("team", "")
+                if not team_name:
+                    employees.append(u["name"])
+                elif isinstance(u_team, list):
+                    if any(team_name.lower() in str(t).lower() for t in u_team):
+                        employees.append(u["name"])
+                elif team_name.lower() in str(u_team).lower():
+                    employees.append(u["name"])
+        
+        if not employees:
+            return {"status": "error", "message": f"No employees found for team '{team_name or 'ALL'}'"}
+
+        # 2. Filter for Open and Unassigned tickets
+        # Unassigned = User Name is empty, "nan", "None", or "Unknown"
+        unassigned_mask = (
+            (df["Ticket Status"].str.lower() == "open") & 
+            (df["User Name"].isna() | (df["User Name"].astype(str).str.lower().isin(["", "nan", "none", "unknown", "unassigned", "default"])))
+        )
+        
+        if team_name:
+            unassigned_mask &= df["Assigned Team"].str.lower().str.contains(team_name.lower(), na=False)
+            
+        unassigned_df = df[unassigned_mask]
+        unassigned_indices = unassigned_df.index.tolist()
+        
+        if not unassigned_indices:
+            return {"status": "success", "message": "No unassigned open tickets found.", "assigned_count": 0}
+
+        # 3. Calculate current workload (# of Open tickets) for these employees
+        workload = {}
+        for emp in employees:
+            count = len(df[(df["User Name"].str.lower() == emp.lower()) & (df["Ticket Status"].str.lower() == "open")])
+            workload[emp] = count
+            
+        # 4. Assign tickets
+        assignments_made = 0
+        for idx in unassigned_indices:
+            # Pick employee with minimum workload
+            target_emp = min(workload, key=workload.get)
+            df.at[idx, "User Name"] = target_emp
+            df.at[idx, "Ticket Updated Date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            workload[target_emp] += 1
+            assignments_made += 1
+            
+        save_tickets_df(df)
+        
+        return {
+            "status": "success", 
+            "message": f"Successfully assigned {assignments_made} tickets.",
+            "assigned_count": assignments_made,
+            "new_workload": workload
+        }
+        
     except Exception as e:
-        print("Error:", str(e))
+        import traceback
+        traceback.print_exc()
+        return {"status": "error", "message": f"Intelligent assignment failed: {str(e)}"}

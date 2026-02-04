@@ -8,7 +8,8 @@ from table_db import (
     update_multiple_fields, 
     get_kpi_metrics, 
     get_team_list,
-    search_invoices
+    search_invoices,
+    intelligent_assign_tickets
 )
 
 class ChatAIAgent:
@@ -165,6 +166,19 @@ class ChatAIAgent:
                     }
                 }
             })
+            tools.append({
+                "type": "function",
+                "function": {
+                    "name": "intelligent_assign_tickets",
+                    "description": "Automatically assign unassigned open tickets to employees to balance workload.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "team_name": {"type": "string", "description": "Optional team name to balance workload for"}
+                        }
+                    }
+                }
+            })
         
         return tools
 
@@ -294,6 +308,15 @@ class ChatAIAgent:
                     print(f"DEBUG: ChatAgent search_invoices called with: {args}")
                     results = search_invoices(args)
                     result = json.dumps(results, default=str)
+
+                elif func_name == "intelligent_assign_tickets":
+                    team = args.get("team_name")
+                    if not team and self.role != "admin":
+                        team = self.team_str
+                    
+                    print(f"DEBUG: ChatAgent intelligent_assign_tickets for team: {team}")
+                    res = intelligent_assign_tickets(team)
+                    result = json.dumps(res)
 
                 messages.append({
                     "role": "tool",

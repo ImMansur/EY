@@ -27,7 +27,42 @@
     {
         "email": "mansur@gmail.com",
         "password": "123",
-        "name": "Robert Brown",
+        "name": "Mansur",
+        "role": "employee",
+        "team": "AR"
+    },
+    {
+        "email": "michaelgreen@ey.com",
+        "password": "123",
+        "name": "Michael Green",
+        "role": "employee",
+        "team": "AR"
+    },
+    {
+        "email": "laurascott@ey.com",
+        "password": "123",
+        "name": "Laura Scott",
+        "role": "employee",
+        "team": "AR"
+    },
+    {
+        "email": "aliciabrown@ey.com",
+        "password": "123",
+        "name": "Alicia Brown",
+        "role": "employee",
+        "team": "AR"
+    },
+    {
+        "email": "kevinhall@ey.com",
+        "password": "123",
+        "name": "Kevin Hall",
+        "role": "employee",
+        "team": "AR"
+    },
+    {
+        "email": "gracetaylor@ey.com",
+        "password": "123",
+        "name": "Grace Taylor",
         "role": "employee",
         "team": "AR"
     }
