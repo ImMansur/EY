@@ -12,7 +12,7 @@
         align-items: center;
         gap: 0.75rem;
     }
-    
+
     .page-header h1 .icon-box {
         width: 48px;
         height: 48px;
@@ -23,14 +23,14 @@
         justify-content: center;
         color: var(--ey-black);
     }
-    
+
     /* KPI Grid */
     .kpi-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
         gap: 1.5rem;
     }
-    
+
     .kpi-card {
         background: var(--bg-card);
         border: 1px solid var(--border-color);
@@ -41,12 +41,12 @@
         transition: all 0.3s ease;
         box-shadow: var(--shadow-sm);
     }
-    
+
     .kpi-card:hover {
         transform: translateY(-4px);
         box-shadow: var(--shadow-lg);
     }
-    
+
     .kpi-card::before {
         content: '';
         position: absolute;
@@ -55,12 +55,23 @@
         right: 0;
         height: 4px;
     }
-    
-    .kpi-card.yellow::before { background: var(--ey-yellow); }
-    .kpi-card.blue::before { background: var(--accent-blue); }
-    .kpi-card.green::before { background: var(--accent-green); }
-    .kpi-card.red::before { background: var(--accent-red); }
-    
+
+    .kpi-card.yellow::before {
+        background: var(--ey-yellow);
+    }
+
+    .kpi-card.blue::before {
+        background: var(--accent-blue);
+    }
+
+    .kpi-card.green::before {
+        background: var(--accent-green);
+    }
+
+    .kpi-card.red::before {
+        background: var(--accent-red);
+    }
+
     .kpi-icon {
         width: 48px;
         height: 48px;
@@ -71,34 +82,49 @@
         font-size: 1.25rem;
         margin-bottom: 1rem;
     }
-    
-    .kpi-icon.yellow { background: var(--ey-yellow-light); color: var(--ey-black); }
-    .kpi-icon.blue { background: #dbeafe; color: var(--accent-blue); }
-    .kpi-icon.green { background: #d1fae5; color: var(--accent-green); }
-    .kpi-icon.red { background: #fee2e2; color: var(--accent-red); }
-    
-    .kpi-label { 
-        color: var(--text-secondary); 
+
+    .kpi-icon.yellow {
+        background: var(--ey-yellow-light);
+        color: var(--ey-black);
+    }
+
+    .kpi-icon.blue {
+        background: #dbeafe;
+        color: var(--accent-blue);
+    }
+
+    .kpi-icon.green {
+        background: #d1fae5;
+        color: var(--accent-green);
+    }
+
+    .kpi-icon.red {
+        background: #fee2e2;
+        color: var(--accent-red);
+    }
+
+    .kpi-label {
+        color: var(--text-secondary);
         font-size: 0.8125rem;
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.025em;
-        margin-bottom: 0.25rem; 
+        margin-bottom: 0.25rem;
     }
-    
-    .kpi-value { 
-        font-size: 2.25rem; 
-        font-weight: 800; 
+
+    .kpi-value {
+        font-size: 2.25rem;
+        font-weight: 800;
         line-height: 1.2;
         color: var(--text-primary);
     }
-    
-    .kpi-subtitle { 
-        color: var(--text-secondary); 
-        font-size: 0.8125rem; 
+
+    .kpi-subtitle {
+        color: var(--text-secondary);
+        font-size: 0.8125rem;
         margin-top: 0.5rem;
     }
-    
+
     /* Filter Card */
     .filter-card {
         background: var(--bg-card);
@@ -108,7 +134,7 @@
         margin-bottom: 2rem;
         box-shadow: var(--shadow-sm);
     }
-    
+
     /* Chart Card */
     .chart-card {
         background: var(--bg-card);
@@ -118,20 +144,20 @@
         height: 100%;
         box-shadow: var(--shadow-sm);
     }
-    
+
     .chart-card h5 {
         font-weight: 700;
         color: var(--text-primary);
         margin-bottom: 1rem;
         font-size: 1rem;
     }
-    
+
     .chart-card img {
         width: 100%;
         height: auto;
         border-radius: 8px;
     }
-    
+
     /* Section Title */
     .section-title {
         font-size: 1rem;
@@ -142,7 +168,7 @@
         gap: 0.75rem;
         color: var(--text-primary);
     }
-    
+
     .section-title .section-icon {
         width: 32px;
         height: 32px;
@@ -154,7 +180,7 @@
         color: var(--ey-black);
         font-size: 0.875rem;
     }
-    
+
     /* Header Buttons */
     .header-actions {
         display: flex;
@@ -175,6 +201,9 @@
         <p class="text-secondary mb-0 mt-2">Overview of tickets and invoices across your teams</p>
     </div>
     <div class="header-actions">
+        <a href="{{ url_for('process_tickets') }}" class="btn btn-outline-primary">
+            <i class="fas fa-robot me-2"></i>Run AI Agent
+        </a>
         <a href="{{ url_for('chat_home') }}" class="btn btn-primary">
             <i class="fas fa-comments me-2"></i>Chat
         </a>
@@ -192,7 +221,7 @@
             <select name="team_filter" class="form-select">
                 <option value="">All Teams</option>
                 {% for t in teams %}
-                    <option value="{{ t }}" {% if t == selected_team %}selected{% endif %}>{{ t }}</option>
+                <option value="{{ t }}" {% if t==selected_team %}selected{% endif %}>{{ t }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -201,7 +230,7 @@
             <select name="user_filter" class="form-select">
                 <option value="">All Users</option>
                 {% for u in users %}
-                    <option value="{{ u }}" {% if u == selected_user %}selected{% endif %}>{{ u }}</option>
+                <option value="{{ u }}" {% if u==selected_user %}selected{% endif %}>{{ u }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -210,7 +239,7 @@
             <select name="type_filter" class="form-select">
                 <option value="">All Types</option>
                 {% for typ in types %}
-                    <option value="{{ typ }}" {% if typ == selected_type %}selected{% endif %}>{{ typ }}</option>
+                <option value="{{ typ }}" {% if typ==selected_type %}selected{% endif %}>{{ typ }}</option>
                 {% endfor %}
             </select>
         </div>

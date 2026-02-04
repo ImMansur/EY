@@ -48,16 +48,23 @@ This application provides:
 
 ```
 .
-├── app.py
-├── user.json
-├── table_db.py
-├── templates/
-│   ├── base.html
-│   ├── login.html
-│   ├── admin_dashboard.html
-│   ├── manager_dashboard.html
-│   ├── employee_dashboard.html
-│   └── chat.html
+├── backend/
+│   ├── app.py           (Flask routes & logic)
+│   ├── config.py        (Azure OpenAI Config)
+│   ├── table_db.py      (Excel data utilities)
+│   ├── user.json        (User database)
+│   ├── requirements.txt (Dependencies)
+│   └── QMT Data New.xlsx (Data Source)
+├── frontend/
+│   ├── templates/       (HTML Jinja2 templates)
+│   │   ├── base.html
+│   │   ├── login.html
+│   │   ├── admin_dashboard.html
+│   │   ├── manager_dashboard.html
+│   │   ├── employee_dashboard.html
+│   │   └── chat.html
+│   └── static/          (CSS, JS, Images)
+└── README.md
 ```
 
 ---
@@ -96,21 +103,17 @@ cd ey-query-agent
 ### 2️⃣ Install dependencies
 
 ```bash
-pip install flask pandas matplotlib
+pip install -r backend/requirements.txt
 ```
 
-### 3️⃣ Add your Excel processing logic
+### 3️⃣ Setup Environment
 
-Ensure `table_db.py` returns:
-
-```python
-get_all_tickets_df()
-get_invoices_df()
-```
+Create a `.env` file in the `backend/` directory with your Azure OpenAI credentials.
 
 ### 4️⃣ Run the app
 
 ```bash
+cd backend
 python app.py
 ```
 
