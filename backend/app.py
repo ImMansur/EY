@@ -485,6 +485,58 @@ def dashboard():
         </div>
         """, error=str(e), traceback=traceback.format_exc())
 
+import hashlib
+import os
+
+def validate_token(ticket_id, token):
+    secret = os.getenv("APPROVAL_SECRET", "ey_approval_secret")
+    expected = hashlib.sha256(f"{ticket_id}:{secret}".encode()).hexdigest()
+    return token == expected
+
+
+@app.route("/ticket/approve/<ticket_id>")
+def approve_ticket(ticket_id):
+    token = request.args.get("token")
+
+    if not validate_token(ticket_id, token):
+        return "❌ Invalid or expired approval link.", 403
+
+    success = update_multiple_fields(ticket_id, {
+        "Ticket Status": "Closed",
+        "Auto Solved": False,
+        "Admin Review Needed": "No"
+    })
+
+    if success:
+        return f"""
+        <h2>✅ Ticket {ticket_id} Approved</h2>
+        <p>The ticket has been successfully closed.</p>
+        """
+    else:
+        return "❌ Failed to update ticket.", 500
+
+@app.route("/ticket/reject/<ticket_id>")
+def reject_ticket(ticket_id):
+    token = request.args.get("token")
+
+    if not validate_token(ticket_id, token):
+        return "❌ Invalid or expired rejection link.", 403
+
+    success = update_multiple_fields(ticket_id, {
+        "Ticket Status": "Open",
+        "Auto Solved": False,
+        "Admin Review Needed": "No"
+    })
+
+    if success:
+        return f"""
+        <h2>❌ Ticket {ticket_id} Reopened</h2>
+        <p>The ticket has been reopened and sent back to the queue.</p>
+        """
+    else:
+        return "❌ Failed to update ticket.", 500
+
+
 
 if __name__ == "__main__":
     app.run(debug=True, host='0.0.0.0', port=5000)

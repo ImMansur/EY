@@ -1,3 +1,5 @@
+import hashlib
+import secrets
 import os
 import json
 from datetime import datetime
@@ -6,6 +8,14 @@ from utils import get_user_email_by_name, get_manager_by_team
 from email_service import send_email
 from config import get_azure_client, get_deployment_name
 from table_db import get_all_tickets_df, search_invoices, update_multiple_fields
+
+# ────────────────────────────────────────────────
+# Approval Token Generator (Email Approval Flow)
+# ────────────────────────────────────────────────
+def generate_approval_token(ticket_id: str) -> str:
+    secret = os.getenv("APPROVAL_SECRET", "ey_approval_secret")
+    raw = f"{ticket_id}:{secret}"
+    return hashlib.sha256(raw.encode()).hexdigest()
 
 
 class TicketAIAgent:
@@ -120,55 +130,106 @@ class TicketAIAgent:
                         "content": json.dumps(results, default=str)
                     })
 
+
                 elif func_name == "resolve_ticket":
+
                     print(f"DEBUG: AI is calling resolve_ticket...")
+
                     print(f"   - Auto Solved: {args.get('auto_solved')}")
+
                     print(f"   - Response: {args.get('ai_response')}")
 
+                    # 1️⃣ Prepare update data
+
                     update_dict = {
+
                         "Auto Solved": args['auto_solved'],
+
                         "AI Response": args['ai_response'],
+
                     }
 
                     if args.get('auto_solved', False):
-                        update_dict["Ticket Status"] = "Closed"
-                        update_dict["Admin Review Needed"] = "Yes"  # Flag for dashboard review
-                    else:
-                        update_dict["Ticket Status"] = "Open"
+                        update_dict["Ticket Status"] = "Pending Manager Approval"
 
-                    success = update_multiple_fields(args['ticket_id'], update_dict)
+                        update_dict["Admin Review Needed"] = "Yes"
 
-                    manager = get_manager_by_team(ticket.get('Assigned Team'))
+                    # 2️⃣ Update Excel FIRST
+
+                    success = update_multiple_fields(ticket_id, update_dict)
+
+                    # 3️⃣ Fetch manager AFTER update
+
+                    manager = get_manager_by_team(ticket.get("Assigned Team"))
+
+                    # 4️⃣ Send approval email
 
                     if manager and args.get('auto_solved', False):
+                        token = generate_approval_token(ticket_id)
+
+                        base_url = os.getenv("APP_BASE_URL", "http://localhost:5000")
+
+                        approve_link = f"{base_url}/ticket/approve/{ticket_id}?token={token}"
+
+                        reject_link = f"{base_url}/ticket/reject/{ticket_id}?token={token}"
+
                         email_body = f"""Hello {manager['name']},
 
-This is to inform you that the AI agent has successfully resolved and CLOSED the following ticket.
 
-Ticket ID: {ticket_id}
-Team: {ticket.get('Assigned Team', 'N/A')}
+                The AI agent has resolved the following ticket and is requesting your approval.
 
-AI Resolution:
-{args.get('ai_response', 'No details provided.')}
 
-Marking this ticket as auto_solved since the query has been successfully resolved via the system.
+                Ticket ID: {ticket_id}
 
-You can review and decide whether to reopen it from the Manager Dashboard.
+                Team: {ticket.get('Assigned Team', 'N/A')}
 
-No immediate action is required unless you believe the closure was incorrect.
 
-Regards,
-EY Query Management System
-"""
+                AI Resolution:
+
+                {args.get('ai_response', 'No details provided.')}
+
+
+                --------------------------------------------------
+
+                ✅ APPROVE CLOSURE:
+
+                {approve_link}
+
+
+                ❌ REJECT & REOPEN:
+
+                {reject_link}
+
+                --------------------------------------------------
+
+
+                Please click one of the above links to proceed.
+
+
+                Regards,
+
+                EY Query Management System
+
+                """
+
                         send_email(
+
                             to_email=manager['email'],
-                            subject=f"Ticket Resolved: {ticket['Ticket ID']}",
+
+                            subject=f"Approval Required: Ticket {ticket_id}",
+
                             body=email_body
+
                         )
 
+                    # 5️⃣ Logging
+
                     if success:
+
                         print(f"SUCCESS: Ticket {ticket_id} updated in Excel.")
+
                     else:
+
                         print(f"ERROR: Failed to update ticket {ticket_id} in Excel.")
 
                     return f"Ticket {ticket_id} resolved: {args['ai_response']}"
