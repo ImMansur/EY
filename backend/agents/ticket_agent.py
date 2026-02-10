@@ -22,18 +22,15 @@ def get_submitter_email(ticket: dict) -> str | None:
     """
     Attempt to find the best email to notify about ticket resolution.
     """
-    # 1. Direct field if it exists
     for field in ["Submitter Email", "Requester Email", "Email"]:
         if field in ticket and ticket[field]:
             return str(ticket[field]).strip()
 
-    # 2. Fallback to User Name → lookup in user.json
     user_name = ticket.get("User Name") or ticket.get("Assigned To")
     if user_name:
         email = get_user_email_by_name(user_name)
         if email:
             return email
-
     return None
 
 
@@ -42,40 +39,42 @@ class TicketAIAgent:
         self.client = get_azure_client()
         self.deployment = get_deployment_name()
         self.system_prompt = """
-        You are an EY Query Management AI Agent. Your goal is to analyze tickets and resolve them if possible.
-        If a ticket involves an invoice (status check, payment query, PO info, copy request), use the 'search_invoices' tool first.
+You are an EY Query Management AI Agent. Your goal is to analyze tickets and resolve or route them according to strict rules.
 
-        Available Invoice Data:
-        - Invoice Number, Invoice Date, Invoice Amount
-        - Vendor ID, Vendor Name
-        - PO Number, PO Status
-        - Payment Status, Payment Term, Due Date, Clearing Date
-        - Customer ID, Customer Name, Country
+Follow EXACTLY these closure / handling categories — do NOT invent others:
 
-        === CLOSURE TYPES - VERY IMPORTANT ===
+1. "without_document"
+   → Simple information requests — no document needed
+   → Examples: payment status, invoice amount, due date, PO number, clearing date
+   → Action: send informative email to requester → close ticket
 
-        When you have enough information to resolve the ticket, ALWAYS call 'resolve_ticket' and choose the correct closure_type:
+2. "with_document"
+   → User explicitly requests a document, copy, proof or remittance advice
+   → Examples: "send invoice copy", "provide proof of payment", "remittance advice"
+   → Action: send email to requester explaining that document generation is currently unavailable → close ticket
 
-        1. "without_document"
-           → Use for simple status checks or information requests
-           → Examples: "What is the payment status?", "When was invoice cleared?", "Show invoice details"
-           → Result: Email sent to requester with answer → ticket closed immediately
+3. "needs_approval"
+   → Actions with financial/risk/policy impact — requires manager sign-off
+   → AP examples: validate vendor details, submit early payment request, put invoice on hold
+   → AR examples: raise refund, investigate customer details, validate cancellation, block invoice
+   → Action: set status "Pending Manager Approval" → send approval email to manager
 
-        2. "with_document"
-           → Use ONLY when the user explicitly asks for a document/copy/proof
-           → Examples: "Send me invoice copy", "Please provide proof of payment", "Remittance advice"
-           → Set attachment_filename if you know it (e.g. "invoice_{number}.pdf")
-           → Result: Document generated + attached to email → ticket closed
+4. "reassign_billing"
+   → Billing-related specialist tickets — NOT resolved by AI
+   → AP examples: raise reversal request, verify exchange rate
+   → AR examples: credit memo creation, partial credit memo, debit memo creation
+   → Action:
+     - Do NOT close the ticket
+     - Re-assign to correct team (AP or AR)
+     - Send notification email to target team (manager email)
+     - Send confirmation to original requester
+     - Keep ticket Open / Assigned
 
-        3. "needs_approval"
-           → Use for actions requiring manager sign-off
-           → AP examples: validate vendor details, submit early payment request, put invoice on hold
-           → AR examples: raise refund, investigate customer details, validate cancellation, block invoice
-           → Result: Ticket → "Pending Manager Approval" → approval email sent to manager
+First step: If ticket mentions invoice number, vendor, customer, PO etc. → ALWAYS call 'search_invoices' first.
 
-        Always explain your choice briefly in ai_response.
-        Provide clear, professional language suitable for direct email to user or manager.
-        """
+Use professional EY-style language in all emails and responses.
+Always explain your chosen handling type briefly in 'ai_response'.
+"""
 
     def get_tool_definitions(self):
         return [
@@ -102,7 +101,7 @@ class TicketAIAgent:
                 "type": "function",
                 "function": {
                     "name": "resolve_ticket",
-                    "description": "Resolve the ticket using the correct closure type.",
+                    "description": "Resolve the ticket using closure type 1,2,3.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -112,14 +111,26 @@ class TicketAIAgent:
                             "closure_type": {
                                 "type": "string",
                                 "enum": ["without_document", "with_document", "needs_approval"],
-                                "description": "Required. Choose based on system prompt rules."
-                            },
-                            "attachment_filename": {
-                                "type": ["string", "null"],
-                                "description": "Only for with_document - suggested filename"
                             }
                         },
                         "required": ["ticket_id", "ai_response", "auto_solved", "closure_type"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "reassign_ticket_and_notify",
+                    "description": "Re-assign ticket to AP or AR team for billing specialist handling (category 4).",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "ticket_id": {"type": "string"},
+                            "target_team": {"type": "string", "enum": ["AP", "AR"]},
+                            "reason": {"type": "string"},
+                            "ai_response": {"type": "string"}
+                        },
+                        "required": ["ticket_id", "target_team", "reason", "ai_response"]
                     }
                 }
             }
@@ -128,9 +139,9 @@ class TicketAIAgent:
     def process_ticket(self, ticket):
         ticket_id = str(ticket.get("Ticket ID"))
         description = str(ticket.get("Description", "No description provided."))
-        status = str(ticket.get("Ticket Status", "Open"))
+        status = str(ticket.get("Ticket Status", "Open")).lower()
 
-        if status.lower() == "closed":
+        if status == "closed":
             print(f"Skipping Ticket {ticket_id}: Already Closed.")
             return "Ticket is already closed."
 
@@ -139,10 +150,12 @@ class TicketAIAgent:
 
         messages = [
             {"role": "system", "content": self.system_prompt},
-            {"role": "user", "content": f"Ticket ID: {ticket_id}\nDescription: {description}"}
+            {"role": "user", "content": f"Ticket ID: {ticket_id}\nDescription: {description}\nCurrent Team: {ticket.get('Assigned Team', 'Unknown')}"}
         ]
 
-        max_turns = 5
+        max_turns = 6
+        last_invoice_results = None
+
         for turn in range(max_turns):
             response = self.client.chat.completions.create(
                 model=self.deployment,
@@ -165,6 +178,7 @@ class TicketAIAgent:
                 if func_name == "search_invoices":
                     print(f"→ Searching invoices: {args}")
                     results = search_invoices(args)
+                    last_invoice_results = results
                     print(f"← Found {len(results)} record(s)")
                     messages.append({
                         "role": "tool",
@@ -175,22 +189,19 @@ class TicketAIAgent:
 
                 elif func_name == "resolve_ticket":
                     print(f"→ resolve_ticket called: {args}")
-
-                    closure_type = args.get("closure_type", "without_document")
-                    ai_response = args.get("ai_response", "Ticket processed by AI agent.")
+                    closure_type = args["closure_type"]
+                    ai_response = args.get("ai_response", "Ticket processed by AI.")
                     auto_solved = args.get("auto_solved", True)
-                    attachment = args.get("attachment_filename")
 
                     update_dict = {
                         "Auto Solved": auto_solved,
                         "AI Response": ai_response,
+                        "Ticket Updated Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     }
 
-                    manager = None
-                    recipient_email = None
                     email_subject = f"Update on Ticket {ticket_id}"
                     email_body = ai_response
-                    attachment_path = None
+                    recipient_email = None
 
                     if closure_type == "needs_approval":
                         update_dict["Ticket Status"] = "Pending Manager Approval"
@@ -205,9 +216,10 @@ class TicketAIAgent:
 
                             email_body = f"""Hello {manager['name']},
 
-The AI agent has resolved Ticket {ticket_id}.
+The AI agent recommends closing Ticket {ticket_id}.
 
 Team: {ticket.get('Assigned Team', 'N/A')}
+Description: {description[:200]}
 
 AI Resolution:
 {ai_response}
@@ -220,72 +232,105 @@ Regards,
 EY Query Management System
 """
                             send_email(
-                                to_email=manager['email'],
+                                to_email=manager["email"],
                                 subject=f"Approval Required: Ticket {ticket_id}",
                                 body=email_body
                             )
 
                     else:
-                        # Direct closure: without_document or with_document
                         update_dict["Ticket Status"] = "Closed"
                         recipient_email = get_submitter_email(ticket)
 
                         if closure_type == "with_document":
-                            # ─────────────── GENERATED DOCUMENT LOGIC ───────────────
-                            # This is where you plug in document_generator.py
-                            # Example:
-                            """
-                            from utils.document_generator import generate_invoice_info_pdf
+                            email_body += "\n\n[Important Notice]\n"
+                            email_body += "Invoice/document copy generation is currently unavailable.\n"
+                            email_body += "Please contact your AP/AR team directly for a manual copy or further assistance.\n"
+                            email_body += "We apologize for the inconvenience and are working to restore this feature."
 
-                            # Assume you have the invoice data from search
-                            # (you may need to store last search result in agent state)
-                            invoice_results = search_invoices({"Invoice Number": "YOUR_INVOICE_NUMBER_HERE"})
-                            if invoice_results:
-                                invoice_data = invoice_results[0]
-                                temp_pdf = f"temp_doc_{ticket_id}.pdf"
-                                pdf_path = generate_invoice_info_pdf(invoice_data, temp_pdf)
-                                if pdf_path:
-                                    attachment_path = pdf_path
-                                else:
-                                    email_body += "\n\n(Note: Document generation failed)"
-                            else:
-                                email_body += "\n\n(No invoice data available for document)"
-                            """
-
-                            # Placeholder until document generation is connected
-                            email_body += "\n\n[Attachment would be included here if document was generated]"
-
-                    # ─── Update Excel ───────────────────────────────────────
                     success = update_multiple_fields(ticket_id, update_dict)
 
-                    # ─── Send resolution email when appropriate ────────────
                     if success and recipient_email and closure_type != "needs_approval":
                         send_email(
                             to_email=recipient_email,
                             subject=email_subject,
-                            body=email_body,
-                            attachment_path=attachment_path
+                            body=email_body
                         )
 
-                        # Optional: clean up temp file
-                        if attachment_path and os.path.exists(attachment_path):
-                            try:
-                                os.remove(attachment_path)
-                            except:
-                                pass
-
                     if success:
-                        print(f"✓ Ticket {ticket_id} updated → {closure_type}")
+                        print(f"✓ Ticket {ticket_id} → {closure_type}")
                     else:
-                        print(f"✗ Failed to update ticket {ticket_id}")
+                        print(f"✗ Update failed for {ticket_id}")
 
                     return f"Ticket {ticket_id} processed: {closure_type} | {ai_response}"
+
+                elif func_name == "reassign_ticket_and_notify":
+                    print(f"→ reassign_ticket_and_notify: {args}")
+                    target_team = args["target_team"].upper()
+                    reason = args.get("reason", "Billing specialist handling required")
+                    ai_response = args.get("ai_response", f"Reassigned to {target_team} team.")
+
+                    update_dict = {
+                        "Assigned Team": target_team,
+                        "Ticket Status": "Open",
+                        "Ticket Updated Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "AI Response": ai_response,
+                        "Auto Solved": False
+                    }
+                    update_dict["User Name"] = None  # clear assigned person
+
+                    success = update_multiple_fields(ticket_id, update_dict)
+
+                    if success:
+                        # Email to requester
+                        requester_email = get_submitter_email(ticket)
+                        if requester_email:
+                            send_email(
+                                to_email=requester_email,
+                                subject=f"Ticket {ticket_id} - Reassigned for Specialist Review",
+                                body=f"""Dear Requester,
+
+Your ticket {ticket_id} has been reviewed.
+
+Reason: {reason}
+
+Action: Reassigned to the {target_team} team for specialist processing.
+
+You will be updated when actioned.
+
+Regards,
+EY Query Management System"""
+                            )
+
+                        # Email to target team (manager email)
+                        team_manager = get_manager_by_team(target_team)
+                        if team_manager:
+                            send_email(
+                                to_email=team_manager["email"],
+                                subject=f"New Ticket Assigned: {ticket_id} ({target_team})",
+                                body=f"""Hello {team_manager['name']},
+
+Ticket {ticket_id} has been reassigned to {target_team}.
+
+Original description: {description[:300]}
+
+Reason: {reason}
+
+Please review and process.
+
+Regards,
+EY Query Management AI Agent"""
+                            )
+
+                        print(f"✓ Ticket {ticket_id} reassigned → {target_team}")
+                        return f"Ticket {ticket_id} reassigned to {target_team} | {ai_response}"
+                    else:
+                        return "Failed to reassign ticket."
 
         return "Agent reached maximum turns without resolving."
 
     def run_on_all_open_tickets(self):
         df = get_all_tickets_df()
-        open_tickets = df[df["Ticket Status"] != "Closed"]
+        open_tickets = df[df["Ticket Status"].str.lower() != "closed"]
 
         results = []
         for _, row in open_tickets.iterrows():
