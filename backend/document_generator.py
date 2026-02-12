@@ -29,7 +29,7 @@ def _format_currency(value) -> str:
     try:
         if value in (None, ""):
             return "N/A"
-e        return f"${float(value):,.2f}"
+        return f"${float(value):,.2f}"
     except Exception:
         return str(value)
 

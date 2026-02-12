@@ -179,6 +179,11 @@ def update_multiple_fields(ticket_id: str, updates: dict) -> bool:
         for orig_field, value in updates.items():
             real_field = field_map.get(orig_field, orig_field)
             if real_field in df.columns:
+                col = df[real_field]
+                # If column is boolean but we plan to store non-boolean text (e.g. status enums),
+                # widen the dtype to object first to avoid FutureWarning/incompatible assignment.
+                if pd.api.types.is_bool_dtype(col.dtype) and not isinstance(value, (bool, type(pd.NA))):
+                    df[real_field] = col.astype("object")
                 df.loc[mask, real_field] = value
 
         # Always update timestamp

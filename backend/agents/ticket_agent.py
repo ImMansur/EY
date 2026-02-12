@@ -401,7 +401,9 @@ Requester emails mention that the attachment is generated from system records.
                 model=self.deployment,
                 messages=messages,
                 tools=self.get_tool_definitions(),
-                tool_choice="auto"
+                tool_choice="auto",
+                max_tokens=500,
+                temperature=0.2
             )
 
             msg = response.choices[0].message
@@ -462,6 +464,12 @@ Requester emails mention that the attachment is generated from system records.
                         print(f"   ⏳ Pending manager approval")
                         update_dict["Ticket Status"] = "Pending Manager Approval"
                         update_dict["Admin Review Needed"] = "Yes"
+                        manager_note = ai_response
+                        user_placeholder = (
+                            f"Ticket {ticket_id} is pending manager review. "
+                            "We will notify you once a decision is made."
+                        )
+                        update_dict["AI Response"] = user_placeholder
 
                         manager = get_manager_by_team(ticket.get("Assigned Team"))
                         if manager:
@@ -478,7 +486,7 @@ Team: {ticket.get('Assigned Team', 'N/A')}
 Request: {description[:200]}...
 
 AI Analysis:
-{ai_response}
+{manager_note}
 
 Actions:
 → APPROVE: {approve_link}
