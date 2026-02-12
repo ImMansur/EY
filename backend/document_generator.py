@@ -222,7 +222,7 @@ def generate_invoice_copy_pdf(invoice_data: dict, ticket_description: str = "", 
         template = Template(template_html)
         
         render_data = {
-            "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "generated_at": datetime.now().strftime("%Y-%m-%d"),
             "invoice_number": invoice_number,
             "amount": amount_display,
             "invoice_date": invoice_date,
@@ -461,7 +461,7 @@ def generate_payment_confirmation_pdf(invoice_data: dict, ticket_description: st
         template = Template(template_html)
         
         render_data = {
-            "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "generated_at": datetime.now().strftime("%Y-%m-%d"),
             "invoice_number": invoice_number,
             "amount": amount_display,
             "payment_status": payment_status,
@@ -673,7 +673,7 @@ def generate_invoice_details_pdf(invoice_data: dict, ticket_description: str = "
         template = Template(template_html)
         
         render_data = {
-            "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "generated_at": datetime.now().strftime("%Y-%m-%d"),
             "invoice_number": invoice_number,
             "data_items": list(data_available.items()),
             "ticket_description": ticket_description[:80] if ticket_description else "Invoice details request"

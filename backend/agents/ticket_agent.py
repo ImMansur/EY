@@ -1,19 +1,21 @@
 # ticket_agent_enhanced.py
 """
-Enhanced Ticket AI Agent with AI-GENERATED FAKE document support.
-Documents are created from limited data and clearly marked as AI-generated substitutes.
+Enhanced Ticket AI Agent with auto-generated invoice document support.
+Documents pull structured data from the Invoice sheet to produce shareable PDFs.
 """
 
 import hashlib
 import os
 import json
-from datetime import datetime
+import re
 
 import pandas as pd
+from datetime import datetime
 from openai import AzureOpenAI
-from utils import get_user_email_by_name, get_manager_by_team
 from email_service import send_email
 from config import get_azure_client, get_deployment_name
+from utils import get_user_email_by_name, get_manager_by_team
+
 from table_db import (
     AUTO_STATUS_AUTO_RESOLVED,
     AUTO_STATUS_MANUAL_REVIEW,
@@ -41,6 +43,7 @@ APPROVAL_KEYWORDS = {
 
 def send_requester_resolution_email(ticket: dict, ai_response: str) -> bool:
     """Notify the employee who raised the ticket."""
+    
     requester_name = ticket.get("User Name", "there")
     requester_email = get_user_email_by_name(requester_name)
     if not requester_email:
@@ -64,18 +67,80 @@ EY Query Management System
         body=body,
     )
 
-# Import AI fake document generators
+# Document generators render PDF summaries using invoice table data.
 try:
-    from document_generator_ai_fake import (
+    from document_generator import (
         generate_invoice_copy_pdf,
         generate_payment_confirmation_pdf,
-        generate_invoice_details_pdf
+        generate_invoice_details_pdf,
     )
     DOCUMENTS_AVAILABLE = True
-    print("✓ AI Document Generator loaded successfully")
-except ImportError:
-    print("⚠️  AI Document Generator not found. Document generation disabled.")
+    print("Document generator loaded successfully.")
+except Exception as exc:
+    print(f"WARNING: Document generator unavailable ({exc}).")
     DOCUMENTS_AVAILABLE = False
+
+
+INVOICE_FIELD_HINTS = [
+    "Invoice Number",
+    "Invoice",
+    "Invoice Reference",
+    "Reference Invoice",
+    "Invoice ID",
+    "Invoice #",
+]
+
+INVOICE_REGEX = re.compile(r"\bINV[\s\-#]?[A-Z0-9]+\b", re.IGNORECASE)
+GENERIC_INVOICE_REGEX = re.compile(
+    r"\bInvoice(?:\s+(?:Number|No\.|#))?\s*[:#-]?\s*([A-Z0-9-]+)\b",
+    re.IGNORECASE,
+)
+
+
+def normalize_invoice_reference(value: str | None) -> str | None:
+    """Normalize raw invoice references such as 'inv1016' to 'INV-1016'."""
+    if not value:
+        return None
+    cleaned = str(value).strip().upper()
+    if not cleaned:
+        return None
+    cleaned = cleaned.replace("INVOICE", "INV").replace(" ", "").replace("#", "")
+    if cleaned.startswith("INV") and not cleaned.startswith("INV-"):
+        remainder = cleaned[3:].lstrip("-")
+        cleaned = f"INV-{remainder}" if remainder else "INV"
+    elif cleaned.isdigit():
+        cleaned = f"INV-{cleaned}"
+    return cleaned
+
+
+def extract_invoice_candidates(ticket: dict) -> list[str]:
+    """Collect possible invoice numbers from structured fields and free text."""
+    candidates: list[str] = []
+
+    for field in INVOICE_FIELD_HINTS:
+        value = ticket.get(field)
+        normalized = normalize_invoice_reference(value) if value else None
+        if normalized:
+            candidates.append(normalized)
+
+    description = ticket.get("Description", "") or ""
+    for match in INVOICE_REGEX.finditer(description):
+        normalized = normalize_invoice_reference(match.group(0))
+        if normalized:
+            candidates.append(normalized)
+
+    for match in GENERIC_INVOICE_REGEX.finditer(description):
+        normalized = normalize_invoice_reference(match.group(1))
+        if normalized:
+            candidates.append(normalized)
+
+    seen = set()
+    ordered: list[str] = []
+    for cand in candidates:
+        if cand and cand not in seen:
+            seen.add(cand)
+            ordered.append(cand)
+    return ordered
 
 
 def generate_approval_token(ticket_id: str) -> str:
@@ -164,9 +229,9 @@ WORKFLOW:
 2. Analyze request → Determine category
 3. Call appropriate tool (resolve_ticket OR reassign_ticket_and_notify)
 
-KEY RULE: Category 2 gets FAKE AI-GENERATED DOCUMENTS.
-These are NOT official invoices - they're substitute documents for convenience.
-User will be informed in email that these are AI-generated.
+KEY RULE: Category 2 produces PDF snapshots sourced from the Invoice sheet.
+These support common requests (invoice copy, payment confirmation, invoice details).
+Requester emails mention that the attachment is generated from system records.
 """
 
     def get_tool_definitions(self):
@@ -233,6 +298,29 @@ User will be informed in email that these are AI-generated.
                 }
             }
         ]
+
+    def _resolve_invoice_data_for_document(self, ticket: dict, cached_invoice: dict | None) -> dict | None:
+        """
+        Ensure we have invoice table data before generating any document attachment.
+        Prefers cached search results; otherwise looks for invoice references in the ticket
+        and queries the invoice sheet directly.
+        """
+        if cached_invoice:
+            return cached_invoice
+
+        candidates = extract_invoice_candidates(ticket)
+        if not candidates:
+            print("   ⚠️  No invoice reference detected for document request.")
+            return None
+
+        for reference in candidates:
+            print(f"   🔎 Fetching invoice row for {reference}")
+            results = search_invoices({"Invoice Number": reference})
+            if results:
+                return results[0]
+
+        print(f"   ⚠️  Invoice data not found for {', '.join(candidates)}")
+        return None
 
     def needs_manager_approval(self, ticket: dict) -> bool:
         team = str(ticket.get("Assigned Team", "")).lower()
@@ -324,7 +412,7 @@ User will be informed in email that these are AI-generated.
                     update_dict = {
                         "Auto Solved": auto_solved,
                         "AI Response": ai_response,
-                        "Ticket Updated Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        "Ticket Updated Date": datetime.now().strftime("%Y-%m-%d")
                     }
 
                     email_subject = f"Ticket {ticket_id} - Update"
@@ -372,29 +460,32 @@ EY Query Management AI Agent
                             print(f"   📧 Approval sent to {manager['name']}")
 
                     # ─────────────────────────────────────────────────────
-                    # CATEGORY 2: with_document (AI FAKE DOCUMENTS)
+                    # CATEGORY 2: with_document (Invoice PDF attachments)
                     # ─────────────────────────────────────────────────────
                     elif closure_type == "with_document":
                         print(f"   📄 Generating AI document...")
                         update_dict["Ticket Status"] = "Closed"
                         recipient_email = get_submitter_email(ticket)
 
-                        if DOCUMENTS_AVAILABLE and last_invoice_data:
-                            # Generate appropriate AI fake document
+                        invoice_payload = self._resolve_invoice_data_for_document(ticket, last_invoice_data)
+                        if invoice_payload and last_invoice_data is None:
+                            last_invoice_data = invoice_payload
+
+                        if DOCUMENTS_AVAILABLE and invoice_payload:
                             if document_type == "payment_confirmation":
                                 attachment_path = generate_payment_confirmation_pdf(
-                                    last_invoice_data, 
-                                    description
+                                    invoice_payload,
+                                    description,
                                 )
                             elif document_type == "invoice_details":
                                 attachment_path = generate_invoice_details_pdf(
-                                    last_invoice_data,
-                                    description
+                                    invoice_payload,
+                                    description,
                                 )
                             else:  # invoice_copy (default)
                                 attachment_path = generate_invoice_copy_pdf(
-                                    last_invoice_data,
-                                    description
+                                    invoice_payload,
+                                    description,
                                 )
 
                             if attachment_path:
@@ -405,18 +496,16 @@ Your request for ticket {ticket_id} has been processed.
 
 {ai_response}
 
-PLEASE NOTE: The attached document is an AI-generated substitute based on available system data. This is NOT an official invoice or receipt. For official documentation, tax purposes, or audit requirements, please contact your AP/AR team directly.
-
-The AI-generated document is provided for your immediate reference and convenience only.
+We attached the latest invoice snapshot pulled directly from the EY invoice ledger for your reference.
 
 Best regards,
 EY Query Management Team
 """
                             else:
-                                print(f"   ✗ Document generation failed")
+                                print("   ✗ Document generation failed")
                                 email_body = f"""Dear Requester,
 
-We attempted to generate a document for ticket {ticket_id}, but encountered an issue.
+We attempted to generate a document for ticket {ticket_id}, but encountered an issue while creating the PDF.
 
 {ai_response}
 
@@ -426,15 +515,14 @@ Best regards,
 EY Query Management Team
 """
                         else:
-                            # No data or documents disabled
-                            print(f"   ⚠️  Insufficient data or documents disabled")
+                            print("   ⚠️  Missing invoice data or generator disabled")
                             email_body = f"""Dear Requester,
 
 Your request for ticket {ticket_id} has been reviewed.
 
 {ai_response}
 
-Unfortunately, we don't have sufficient data to generate the requested document. Please contact your AP/AR team for assistance.
+Unfortunately, we could not access detailed invoice data or the document service is temporarily unavailable. Please contact your AP/AR team for assistance.
 
 Best regards,
 EY Query Management Team
@@ -496,7 +584,7 @@ EY Query Management Team
                     update_dict = {
                         "Assigned Team": target_team,
                         "Ticket Status": "Open",
-                        "Ticket Updated Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "Ticket Updated Date": datetime.now().strftime("%Y-%m-%d"),
                         "AI Response": ai_response,
                         "Auto Solved": False,
                     }

@@ -4,14 +4,28 @@ Database utilities for the Query Management Agent.
 Handles reading from and writing to QMT Data New.xlsx (multi-sheet Excel file).
 """
 
-import pandas as pd
 import os
 import json
 from datetime import datetime
 
+import pandas as pd
+from dotenv import load_dotenv
+
+# Ensure .env (for QMT_EXCEL_PATH) is loaded
+load_dotenv()
+
 # Project root relative path
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-FILE = os.path.join(BASE_DIR, "data", "QMT Data New.xlsx")
+DEFAULT_FILE = os.path.join(BASE_DIR, "data", "QMT Data New.xlsx")
+CONFIGURED_FILE = os.getenv("QMT_EXCEL_PATH")
+
+if CONFIGURED_FILE:
+    candidate = os.path.expanduser(CONFIGURED_FILE)
+    if not os.path.isabs(candidate):
+        candidate = os.path.join(BASE_DIR, candidate)
+    FILE = os.path.abspath(candidate)
+else:
+    FILE = os.path.abspath(DEFAULT_FILE)
 
 AUTO_STATUS_AUTO_RESOLVED = "AI Auto-Resolved"
 AUTO_STATUS_MANUAL_REVIEW = "AI Attempted - Manual Review"
@@ -169,7 +183,7 @@ def update_multiple_fields(ticket_id: str, updates: dict) -> bool:
 
         # Always update timestamp
         if "Ticket Updated Date" in df.columns:
-            df.loc[mask, "Ticket Updated Date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            df.loc[mask, "Ticket Updated Date"] = datetime.now().strftime("%Y-%m-%d")
 
         return save_tickets_df(df)
 
@@ -303,7 +317,7 @@ def intelligent_assign_tickets(team_name=None):
         for idx in unassigned_indices:
             target = min(workload, key=workload.get)
             df.at[idx, "User Name"] = target
-            df.at[idx, "Ticket Updated Date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            df.at[idx, "Ticket Updated Date"] = datetime.now().strftime("%Y-%m-%d")
             workload[target] += 1
             assignments += 1
 

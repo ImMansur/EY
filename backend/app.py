@@ -298,78 +298,7 @@ def auto_assign_single_ticket(ticket_id):
         return None
 
 
-# ────────────────────────────────────────────────
-# Ticket Approval / Rejection (via email links)
-# ────────────────────────────────────────────────
-
-def validate_approval_token(ticket_id, token):
-    secret = os.getenv("APPROVAL_SECRET", "ey_approval_secret")
-    expected = hashlib.sha256(f"{ticket_id}:{secret}".encode()).hexdigest()
-    return token == expected
-
-
-@app.route("/ticket/approve/<ticket_id>")
-def approve_ticket(ticket_id):
-    token = request.args.get("token")
-    if not token or not validate_approval_token(ticket_id, token):
-        flash("Invalid or expired approval link.", "danger")
-        return redirect(url_for("login"))
-
-    # Get current AI response to preserve history
-    current_data = get_all_tickets_df()
-    current_row = current_data[current_data["Ticket ID"] == ticket_id]
-    existing_response = current_row["AI Response"].iloc[0] if not current_row.empty else ""
-
-    success = update_multiple_fields(ticket_id, {
-        "Ticket Status": "Closed",
-        "Auto Solved": True,
-        "Admin Review Needed": "No",
-        "Ticket Updated Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "AI Response": f"{existing_response} | Approved by manager on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-    })
-
-    if success:
-        flash(f"Ticket {ticket_id} approved and closed successfully.", "success")
-    else:
-        flash(f"Failed to approve ticket {ticket_id}. Please contact support.", "danger")
-
-    return redirect(url_for("dashboard"))
-
-
-@app.route("/ticket/reject/<ticket_id>")
-def reject_ticket(ticket_id):
-    token = request.args.get("token")
-    if not token or not validate_approval_token(ticket_id, token):
-        flash("Invalid or expired rejection link.", "danger")
-        return redirect(url_for("login"))
-
-    # Get current AI response to preserve history
-    current_data = get_all_tickets_df()
-    current_row = current_data[current_data["Ticket ID"] == ticket_id]
-    existing_response = current_row["AI Response"].iloc[0] if not current_row.empty else ""
-
-    success = update_multiple_fields(ticket_id, {
-        "Ticket Status": "Open",
-        "Auto Solved": False,
-        "Admin Review Needed": "No",
-        "Ticket Updated Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "AI Response": f"{existing_response} | Rejected by manager – reopened on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-    })
-
-    if success:
-        assigned_user = auto_assign_single_ticket(ticket_id)
-        if assigned_user:
-            flash(f"Ticket {ticket_id} rejected and reopened. Auto-assigned to {assigned_user}.", "warning")
-        else:
-            flash(f"Ticket {ticket_id} rejected and reopened (no auto-assignment available).", "warning")
-    else:
-        flash(f"Failed to reject/reopen ticket {ticket_id}.", "danger")
-
-    return redirect(url_for("dashboard"))
-
-
-# ────────────────────────────────────────────────
-# Manager/Admin Review of AI-resolved Tickets (from dashboard)
+# ────────────────────────────────────────────────# Manager/Admin Review of AI-resolved Tickets (from dashboard)
 # ────────────────────────────────────────────────
 
 @app.route("/review_ticket_action/<ticket_id>", methods=["POST"])
@@ -621,7 +550,7 @@ def approve_ticket(ticket_id):
         "Ticket Status": "Closed",
         "Auto Solved": AUTO_STATUS_MANAGER_REVIEWED,
         "Admin Review Needed": "No",
-        "Ticket Closed Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        "Ticket Closed Date": datetime.now().strftime("%Y-%m-%d")
     })
 
     if success:
