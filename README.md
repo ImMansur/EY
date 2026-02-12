@@ -15,6 +15,7 @@ An intelligent, AI-driven web application for managing and resolving queries (ti
     *   **Managers**: View team tickets, approve/reject resolutions, view analytics.
     *   **Admins**: Full system access.
 *   **Excel as Database**: Seamless integration with `QMT Data New.xlsx` for zero-setup data persistence.
+*   **Instant PDF Attachments**: Ticket agent can attach invoice summaries, payment confirmations, or detail sheets generated with lightweight `fpdf2` – no heavy native dependencies required.
 *   **Interactive Dashboards**: Data visualization for ticket status and team performance.
 
 ## 🛠️ Tech Stack
@@ -23,6 +24,7 @@ An intelligent, AI-driven web application for managing and resolving queries (ti
 *   **AI/LLM**: Azure OpenAI (GPT-4)
 *   **Database**: Excel (pandas, openpyxl)
 *   **Notifications**: SMTP Email Service (Gmail Integration)
+*   **Reporting**: `fpdf2`-based PDF generator for invoice snapshots
 *   **Frontend**: HTML5, Bootstrap, Jinja2 Templates
 
 ## 📂 Project Structure
@@ -61,7 +63,18 @@ EY-Project/
     ```
 4.  **Configure Environment**:
     *   Copy `backend/.env.example` to `backend/.env`.
-    *   Fill in your **Azure OpenAI** keys and **SMTP** credentials.
+    *   Fill in your **Azure OpenAI** keys, **SMTP** credentials, and update `QMT_EXCEL_PATH` if your data file lives elsewhere (it accepts relative paths such as `data/QMT Data New.xlsx`).
+    *   Optional: tweak `APP_BASE_URL` or `APPROVAL_SECRET` as needed for approval links.
+
+### Environment Variables
+
+| Variable | Description |
+| --- | --- |
+| `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT_NAME`, `AZURE_OPENAI_API_VERSION` | Azure OpenAI connection details used by Chat and Ticket agents. |
+| `SMTP_EMAIL`, `SMTP_PASSWORD` | Credentials for the SMTP account that sends notifications and approval links. |
+| `APP_BASE_URL` | Base URL inserted into manager approve/reject links (defaults to `http://localhost:5000`). |
+| `APPROVAL_SECRET` | Shared secret used to generate approval tokens (defaults internally if omitted). |
+| `QMT_EXCEL_PATH` | Relative or absolute path to `QMT Data New.xlsx`. Set this if the file is relocated. |
 
 ## ▶️ Running the Application
 
