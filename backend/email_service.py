@@ -99,7 +99,7 @@ def send_test_email():
     
     success = send_email(
         to_email=SENDER_EMAIL,
-        subject="Test Email - EY Query Agent",
+        subject="Test Email - Query Agent",
         body="This is a test message from the Query Management System.\n\n"
              "If you see this email, SMTP configuration is working correctly.",
     )

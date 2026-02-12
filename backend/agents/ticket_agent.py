@@ -53,13 +53,13 @@ def send_requester_resolution_email(ticket: dict, ai_response: str) -> bool:
     ticket_id = ticket.get("Ticket ID", "N/A")
     body = f"""Hello {requester_name},
 
-{ai_response or 'Your ticket has been processed by the EY Query Management Agent.'}
+{ai_response or 'Your ticket has been processed by the Query Management Agent.'}
 
 Ticket ID: {ticket_id}
 Status: Closed
 
 Regards,
-EY Query Management System
+Query Management System
 """
     return send_email(
         to_email=requester_email,
@@ -493,7 +493,7 @@ Actions:
 → REJECT: {reject_link}
 
 Best regards,
-EY Query Management AI Agent
+Query Management AI Agent
 """
                             send_email(
                                 to_email=manager["email"],
@@ -539,10 +539,10 @@ Your request for ticket {ticket_id} has been processed.
 
 {ai_response}
 
-We attached the latest invoice snapshot pulled directly from the EY invoice ledger for your reference.
+We attached the latest invoice snapshot pulled directly from the invoice ledger for your reference.
 
 Best regards,
-EY Query Management Team
+Query Management Team
 """
                             else:
                                 print("   ✗ Document generation failed")
@@ -556,7 +556,7 @@ Current ledger status: {payment_status}.
 If you require an officially stamped confirmation, please reach out to your AP/AR partner and they will provide the formal document.
 
 Best regards,
-EY Query Management Team
+Query Management Team
 """
                         else:
                             print("   ⚠️  Missing invoice data or generator disabled")
@@ -570,7 +570,7 @@ Your request for ticket {ticket_id} has been reviewed.
 We could not retrieve the invoice details needed to create a PDF automatically (current ledger status: {fallback_status}). Please contact your AP/AR team if you require an official document.
 
 Best regards,
-EY Query Management Team
+Query Management Team
 """
 
                     # ─────────────────────────────────────────────────────
@@ -590,7 +590,7 @@ Your inquiry regarding ticket {ticket_id} has been resolved.
 If you need further assistance, please create a new ticket.
 
 Best regards,
-EY Query Management Team
+Query Management Team
 """
 
                     # Update database
@@ -652,7 +652,7 @@ Reason: {reason}
 Ticket status (AI): {status_text}
 
 Best regards,
-EY Query Management System
+Query Management System
 """
                             send_email(
                                 to_email=requester_email,
@@ -680,7 +680,7 @@ Reason: {reason}
 Please review and take necessary action.
 
 Best regards,
-EY AI Agent
+AI Agent
 """
                                 )
                                 print(f"   📧 Assigned employee notified: {user_name}")

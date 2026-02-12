@@ -1,4 +1,4 @@
-# EY Query Management Tool (QMT) - AI Powered
+# Query Management Tool (QMT) - AI Powered
 
 An intelligent, AI-driven web application for managing and resolving queries (tickets) with automated workflows. Built for EY to streamline operations using Azure OpenAI and Excel-based data management.
 

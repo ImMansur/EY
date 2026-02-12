@@ -50,7 +50,7 @@ def _truncate(value: str | None, limit: int = 160) -> str:
 class SimpleReportPDF(FPDF):
     def header(self) -> None:
         self.set_font("Helvetica", "B", 15)
-        self.cell(0, 8, "EY Query Management System", ln=1, align="C")
+        self.cell(0, 8, "Query Management System", ln=1, align="C")
         self.set_font("Helvetica", "", 11)
         self.cell(0, 6, "Automated Invoice Snapshot", ln=1, align="C")
         self.ln(4)
@@ -135,7 +135,7 @@ def generate_invoice_copy_pdf(invoice_data: dict, ticket_description: str = "", 
         ]
 
         subtitle = _truncate(ticket_description) or "Invoice copy requested by user."
-        notes = "Summary generated directly from the EY invoice ledger for convenience."
+        notes = "Summary generated directly from the invoice ledger for convenience."
         return _build_pdf("Invoice Copy Summary", subtitle, rows, notes, output_path)
     except Exception as exc:
         print(f"? Invoice copy generation failed: {exc}")
