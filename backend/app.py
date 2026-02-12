@@ -33,6 +33,29 @@ app.secret_key = "ey_demo_secret_key_2025_super_secret"
 # Users file path
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 USERS_FILE = os.path.join(BASE_DIR, "user.json")
+CHAT_HISTORY_FILE = os.path.join(BASE_DIR, "chat_history.json")
+
+
+def _load_all_histories():
+    if os.path.exists(CHAT_HISTORY_FILE):
+        try:
+            with open(CHAT_HISTORY_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
+
+def get_user_chat_history(user_email):
+    histories = _load_all_histories()
+    return histories.get(user_email, [])
+
+
+def save_user_chat_history(user_email, history):
+    histories = _load_all_histories()
+    histories[user_email] = history
+    with open(CHAT_HISTORY_FILE, "w", encoding="utf-8") as f:
+        json.dump(histories, f, ensure_ascii=False, indent=2)
 
 
 def load_users():
@@ -151,10 +174,7 @@ def chat_home():
     if not user:
         return redirect(url_for("login"))
 
-    if "chat_history" not in session:
-        session["chat_history"] = []
-
-    chat_history = session["chat_history"]
+    chat_history = get_user_chat_history(user["email"])
     error = None
 
     if request.method == "POST":
@@ -166,7 +186,7 @@ def chat_home():
 
                 log_chat_interaction(user, user_msg, ai_response)
 
-                session["chat_history"] = updated_history
+                save_user_chat_history(user["email"], updated_history)
                 session["last_token_usage"] = total_tokens
                 session.modified = True
 
@@ -178,7 +198,7 @@ def chat_home():
             flash("Please enter a message.", "warning")
 
     display_history = [
-        msg for msg in session.get("chat_history", [])
+        msg for msg in get_user_chat_history(user["email"])
         if msg.get("role") in ["user", "assistant"]
            and msg.get("content")
            and msg["content"] not in ["None", ""]
@@ -194,8 +214,9 @@ def chat_home():
 
 @app.route("/new_session")
 def new_session():
-    session["chat_history"] = []
-    session.modified = True
+    user = session.get("user")
+    if user:
+        save_user_chat_history(user["email"], [])
     flash("New chat session started.", "success")
     return redirect(url_for("chat_home"))
 
@@ -640,5 +661,5 @@ def reject_ticket(ticket_id):
 
 
 if __name__ == "__main__":
-    print("Starting EY Query Management Flask app...")
-    app.run(debug=False, host='0.0.0.0', port=5000)
+    print("Starting Query Management Flask app...")
+    app.run(debug=True, host='0.0.0.0', port=5000)
